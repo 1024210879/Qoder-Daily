@@ -59,7 +59,7 @@
 - **Token 轮换恢复**：refresh_token 轮换后写入本地状态；Actions 可再用 `QODER_CACHE_KEY` 加密缓存。
 - **额度类 403 分流**：区分额度耗尽、每日计费上限和真实登录失效。
 - **Pro 活动谨慎领取**：只在 campaigns 实际发现或只读 reward 核对面值后才 claim。
-- **多账号与推送**：支持中国版 / 国际版混合账号，以及 PushPlus、Bark、企业微信、钉钉和青龙通知。
+- **多账号与推送**：支持中国版 / 国际版混合账号，以及 PushPlus、Bark、企业微信、钉钉、飞书（交互卡片）和青龙通知；配了多个渠道时逐个群发，互不阻塞。
 
 ## 🧩 工作流程
 
@@ -138,7 +138,7 @@ access_token|refresh_token
 | `QODER_MACHINE_TOKEN` / `QODER_MACHINE_CODE` / `QODER_MACHINE_TYPE` | 条件必填 | 没有本地 runtime-info 时提供设备身份三件套。 |
 | `QODERCN_RUNTIME_INFO` / `QODER_RUNTIME_INFO` / `QODER_UMID_PATH` | ➖ | 分别覆盖中国版 / 国际版 / 通用组件路径。 |
 | `QODER_UMID_NO_INSTALL` | ➖ | 设为 `1` 时禁止从官方包自动提取身份。 |
-| `PUSHPLUS_TOKEN` / `BARK_URL` / `WECOM_WEBHOOK` / `DINGTALK_WEBHOOK` / `DINGTALK_SECRET` | ➖ | 可选推送。 |
+| `PUSHPLUS_TOKEN` / `BARK_URL` / `WECOM_WEBHOOK` / `DINGTALK_WEBHOOK` / `DINGTALK_SECRET` / `FEISHU_WEBHOOK` | ➖ | 可选推送。配了哪个就推哪个，可同时配多个（每个渠道都会收到）。 |
 
 进入 **Actions → Qoder Daily → Run workflow** 手动验证。需要云端定时时，取消工作流中的两行注释：
 
@@ -209,6 +209,7 @@ QODER_WINDOW_RETRY_GAP: "90"
 | `BARK_URL` | 无 | Bark。 |
 | `WECOM_WEBHOOK` | 无 | 企业微信群机器人。 |
 | `DINGTALK_WEBHOOK` / `DINGTALK_SECRET` | 无 | 钉钉 webhook 与加签密钥。 |
+| `FEISHU_WEBHOOK` | 无 | 飞书群机器人 webhook（可只填 hook 后的 key）。推交互卡片：有 `❌` 红色、全 `✅` 绿色、仅 `ℹ️` 蓝色。 |
 
 > [!NOTE]
 > 脚本会把 `QODER_WINDOW_RETRY_MAX` 限制在 `1..6`。workflow 中写 `16`，最终仍受脚本的 6 次上限约束。

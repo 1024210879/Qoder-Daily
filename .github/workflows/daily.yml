@@ -70,6 +70,7 @@ jobs:
           WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK }}
           DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
           QODER_WINDOW_RETRY: "1"
           QODER_WINDOW_RETRY_MAX: "16"
           QODER_WINDOW_RETRY_GAP: "90"

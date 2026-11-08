@@ -41,7 +41,8 @@
    WECOM_WEBHOOK   企微群机器人地址或 key（可选）
    DINGTALK_WEBHOOK  钉钉机器人 webhook（可选）
    DINGTALK_SECRET   钉钉加签密钥（可选）
-QODER_WINDOW_RETRY  【可选】10:00-11:00 CST 内暂未下发时按 10 分钟重试（默认 1）
+   FEISHU_WEBHOOK  飞书群机器人地址或 key（可选，推交互卡片）
+   QODER_WINDOW_RETRY 【可选】10:00-11:00 CST 内暂未下发时按 10 分钟重试（默认 1）
 
 ⌨️ 命令
    python qoder_daily.py                 正常签到
@@ -1393,10 +1394,103 @@ def notify_ql(title, content):
         return False
 
 
+# [FORK-BEGIN] 飞书交互卡片 + 多渠道群发（本地增强；上游同步时整块保留，勿与上游 notify_* 混写）
+FEISHU_HOOK_PREFIX = "https://open.feishu.cn/open-apis/bot/v2/hook/"
+FEISHU_MAX_BODY = 3000
+FEISHU_MAX_TITLE = 60
+
+
+def _env_ready(*names):
+    """返回“这些环境变量是否都配了”的探针，避免改动既有 handler 的返回语义。"""
+    return lambda: all(_env(item) for item in names)
+
+
+def _panel_notify_ready():
+    """青龙面板自带 notify 模块是否可用（无法用 env 探测的老渠道）。"""
+    try:
+        from notify import send  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def notify_feishu(title, content):
+    """飞书群机器人：交互卡片。有失败红 / 全成功绿 / 仅中性信息蓝。"""
+    hook = _env("FEISHU_WEBHOOK")
+    if not hook:
+        return False
+    if not hook.startswith("http"):
+        hook = FEISHU_HOOK_PREFIX + hook
+    raw = str(content or "")
+    # 判色只看原文，避免状态图标恰好被截断在阈值之外
+    if "❌" in raw:
+        color = "red"
+    elif "✅" in raw:
+        color = "green"
+    else:
+        color = "blue"
+    if len(raw) > FEISHU_MAX_BODY:
+        text = raw[:FEISHU_MAX_BODY] + "\n\n…（已截断，原文 %d 字）" % len(raw)
+    else:
+        text = raw
+    payload = {
+        "msg_type": "interactive",
+        "card": {
+            "config": {"wide_screen_mode": True},
+            "header": {
+                "template": color,
+                "title": {"tag": "plain_text",
+                          "content": str(title or "Qoder 签到报告")[:FEISHU_MAX_TITLE]},
+            },
+            "elements": [
+                {"tag": "div", "text": {"tag": "lark_md", "content": text}},
+            ],
+        },
+    }
+    try:
+        answer = json_of(post_json(hook, payload))
+        # 新版返回 {"code":0}；老版返回 {"StatusCode":0}。不要用 `code in (0, "0")`，False == 0 会误判
+        code = answer.get("code", answer.get("StatusCode"))
+        return str(code).strip() == "0"
+    except Exception:
+        return False
+
+
 def notify_all(title, content):
-    handlers = (notify_pushplus, notify_bark, notify_wecom, notify_dingtalk, notify_ql)
-    if not any(handler(title, content) for handler in handlers):
+    """遍历所有已配置渠道逐个群发；任一渠道失败/异常都不影响其它渠道。
+
+    返回 {"sent": [...], "failed": [...]}，仅供诊断，主流程忽略。
+    """
+    channels = (
+        ("PushPlus", notify_pushplus, _env_ready("PUSHPLUS_TOKEN")),
+        ("Bark", notify_bark, _env_ready("BARK_URL")),
+        ("企业微信", notify_wecom, _env_ready("WECOM_WEBHOOK")),
+        ("钉钉", notify_dingtalk, _env_ready("DINGTALK_WEBHOOK")),
+        ("飞书", notify_feishu, _env_ready("FEISHU_WEBHOOK")),
+        ("青龙", notify_ql,
+         lambda: _panel_notify_ready() or bool(_env("QL_URL") and _env("QL_TOKEN"))),
+    )
+    sent, failed = [], []
+    for name, handler, ready in channels:
+        if not ready():
+            continue
+        try:
+            if handler(title, content):
+                sent.append(name)
+                log("   ↳ 推送 %s：成功" % name)
+            else:
+                failed.append(name)
+                log("   ↳ 推送 %s：失败（接口返回非成功码）" % name)
+        except Exception as error:
+            failed.append(name)
+            log("   ↳ 推送 %s：异常 %s: %s" % (name, type(error).__name__, error))
+    if not sent and not failed:
         log("（未配置推送渠道，本次只记录日志）")
+    elif failed:
+        log("推送完成：成功 %d 个（%s），失败 %d 个（%s）"
+            % (len(sent), "、".join(sent) or "-", len(failed), "、".join(failed)))
+    return {"sent": sent, "failed": failed}
+# [FORK-END]
 
 
 # ---------- 账号解析与主流程 ----------
