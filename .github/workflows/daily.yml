@@ -1,11 +1,13 @@
 name: Qoder Daily
 
 on:
-  # 上游仓库默认不跑定时，避免空跑。
-  # fork 后想启用定时：把下面两行取消注释（cron 用 UTC，北京时间 = UTC+8）。
-  # 北京时间 每天 10:05（活动 10:00 开窗）
+  # cron 用 UTC，北京时间 = UTC+8。活动每天 10:00 CST 开窗。
+  # GitHub 的 schedule 常有排队延迟（实测曾延迟 7 小时以上），单点 cron 容易
+  # 错过 10:00-11:00 领取窗口，所以铺三个时段：首跑负责推送，后两次静默补跑。
   schedule:
-    - cron: "5 2 * * *"
+    - cron: "5 2 * * *"    # 10:05 CST，主运行（带推送）
+    - cron: "35 2 * * *"   # 10:35 CST，补跑（静默）
+    - cron: "15 3 * * *"   # 11:15 CST，补跑（静默）
   workflow_dispatch:
 
 permissions:
@@ -74,7 +76,13 @@ jobs:
           QODER_WINDOW_RETRY: "1"
           QODER_WINDOW_RETRY_MAX: "16"
           QODER_WINDOW_RETRY_GAP: "90"
-        run: python qoder_daily.py
+        # 只有主时段与手动触发推送，补跑静默，避免同一天收到多条重复通知。
+        run: |
+          if [ -z "${{ github.event.schedule }}" ] || [ "${{ github.event.schedule }}" = "5 2 * * *" ]; then
+            python qoder_daily.py
+          else
+            python qoder_daily.py --no-notify
+          fi
 
       # Refresh may succeed before a later request fails; retain rotated tokens.
       - name: Encrypt token state
