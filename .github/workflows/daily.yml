@@ -78,10 +78,20 @@ jobs:
           QODER_WINDOW_RETRY_GAP: "90"
         # 只有主时段与手动触发推送，补跑静默，避免同一天收到多条重复通知。
         run: |
+          set -o pipefail
           if [ -z "${{ github.event.schedule }}" ] || [ "${{ github.event.schedule }}" = "5 2 * * *" ]; then
-            python qoder_daily.py
+            python qoder_daily.py 2>&1 | tee checkin.log
           else
-            python qoder_daily.py --no-notify
+            python qoder_daily.py --no-notify 2>&1 | tee checkin.log
+          fi
+
+      # 脚本本身总是 exit 0，"领取失败"只能从报告文本里捞出来，否则签到挂了工作流还是绿的。
+      - name: Surface check-in failure
+        if: ${{ always() }}
+        run: |
+          if [ -f checkin.log ] && grep -q "领取失败" checkin.log; then
+            echo "::error::本轮签到报告包含失败项（见上方 Run Qoder Daily 日志）"
+            exit 1
           fi
 
       # Refresh may succeed before a later request fails; retain rotated tokens.
